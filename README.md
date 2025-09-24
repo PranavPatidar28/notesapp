@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Notes App (Multi-tenant)
 
-## Getting Started
+Production-ready multi-tenant Notes application with JWT auth, role-based access, subscription gating (Free vs Pro), and CRUD APIs. Built with Next.js, Prisma (Postgres), TailwindCSS.
 
-First, run the development server:
+# Multi-Tenancy Approach
+- Shared database schema with a `tenantId` column on multi-tenant tables (`User`, `Note`).
+- All queries are scoped by `tenantId` derived from the JWT payload to ensure strict isolation.
+- Tenants are identified by `slug` (e.g., `acme`, `globex`).
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Tech Stack
+- Next.js 15 (App Router, TypeScript)
+- Prisma ORM
+- PostgreSQL (Neon) in production;
+- JWT (`jsonwebtoken`), password hashing with `bcrypt`
+- TailwindCSS
+
+# Environment Variables
+```
+DATABASE_URL="postgresql://example.com"
+JWT_SECRET="averystrongsecretthatcannotbeguessed"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+# Install & Run Locally
+```
+npm install
+npx prisma generate
+npm run prisma:migrate
+npm run db:seed
+npm run dev
+```
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+What is covered:
+- Health check, authentication and JWT payload shape
+- Tenant isolation and role-based restrictions (upgrade endpoint)
+- Free-plan subscription limits and post-upgrade behavior
+- Notes CRUD API and frontend smoke (login, list, create, delete, upgrade CTA)
 
-## Learn More
+# Seeded Accounts (password: password)
+- admin@acme.test → Admin (tenant Acme)
+- user@acme.test → Member (tenant Acme)
+- admin@globex.test → Admin (tenant Globex)
+- user@globex.test → Member (tenant Globex)
 
-To learn more about Next.js, take a look at the following resources:
+# API Endpoints
+- `GET /api/health` → `{ "status":"ok" }`
+- Auth: `POST /api/auth/login`
+- Notes:
+  - `POST /api/notes` → Create note (Free plan: max 3 notes/tenant)
+  - `GET /api/notes` → List notes (tenant-scoped)
+  - `GET /api/notes/:id` → Get note (tenant-scoped)
+  - `PUT /api/notes/:id` → Update note (tenant-scoped)
+  - `DELETE /api/notes/:id` → Delete note (tenant-scoped)
+- Tenant Upgrade: `POST /api/tenants/:slug/upgrade` (Admin-only) → Upgrades to Pro immediately (removes note cap)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+All APIs include permissive CORS for demo purposes.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# Frontend
+- `/login` page stores JWT in localStorage on success.
+- `/notes` page lists/creates/deletes notes. Shows an Upgrade banner when the Free-plan limit is reached and calls the upgrade endpoint.
+- Logout clears localStorage and redirects to `/login`.
 
-## Deploy on Vercel
+# Deployment (Vercel)
+1. Create a Postgres database (Neon/Supabase) and set `DATABASE_URL` and `DATABASE_PROVIDER=postgresql` in Vercel Project Environment Variables along with `JWT_SECRET`.
+2. In Vercel, set build command to `npm run build` and install command to `npm install` (default is fine).
+3. After first deploy, run migrations and seed from your local machine against the same database:
+   ```
+   # locally
+   npm install
+   npx prisma generate
+   npm run prisma:migrate
+   npm run db:seed
+   ```
+4. Re-deploy if needed; the app is ready.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Notes
+- Tenant isolation is enforced in all API routes by filtering with `tenantId` from the JWT.
+- Free vs Pro plan gating is implemented in `POST /api/notes`.
+- Admin-only upgrade in `POST /api/tenants/:slug/upgrade` validates both role and tenant ownership.
